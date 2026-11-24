@@ -1,0 +1,23 @@
+{
+  "name": "server",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node ./bin/www",
+    "dev": "node ./bin/www",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.18.0",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.6",
+    "debug": "~2.6.9",
+    "dotenv": "^18.0.10",
+    "express": "^4.22.3",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.12.1",
+    "nodemailer": "^10.6.1",
+    "nodemon": "^3.1.14",
+    "zod": "^4.6.7"
+  }
+}
