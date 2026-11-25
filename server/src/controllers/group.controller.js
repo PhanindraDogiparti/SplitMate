@@ -112,6 +112,11 @@ const getGroupExpenses = asyncHandler(async (req, res) => {
   res.json({ success: true, data: expenses });
 });
 
+const getGroupExpenseVersion = asyncHandler(async (req, res) => {
+  const version = await groupService.getGroupExpenseVersion(req.params.groupId);
+  res.json({ success: true, data: version });
+});
+
 const createExpense = asyncHandler(async (req, res) => {
   const expense = await groupService.createExpense(req.params.groupId, req.body);
   res.status(201).json({ success: true, data: expense });
@@ -162,6 +167,7 @@ module.exports = {
   addGroupMember,
   removeGroupMember,
   getGroupExpenses,
+  getGroupExpenseVersion,
   createExpense,
   getExpenseById,
   updateExpense,

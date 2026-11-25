@@ -74,6 +74,7 @@ router.post(
 router.delete('/:groupId/members/:memberId', requireGroupCreator, groupController.removeGroupMember);
 
 // Group Expenses
+router.get('/:groupId/expense-version', groupController.getGroupExpenseVersion);
 router.get('/:groupId/expenses', groupController.getGroupExpenses);
 router.post('/:groupId/expenses', validateBody(expenseSchema), groupController.createExpense);
 router.get('/:groupId/expenses/:expenseId', groupController.getExpenseById);

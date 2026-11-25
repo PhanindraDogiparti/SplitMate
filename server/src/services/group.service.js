@@ -476,6 +476,21 @@ async function getGroupExpenses(groupId) {
   );
 }
 
+async function getGroupExpenseVersion(groupId) {
+  const result = await getClient().execute({
+    sql: `SELECT COUNT(*) AS expense_count,
+        MAX(COALESCE(NULLIF(updated_at, ''), created_at)) AS latest_updated_at
+      FROM expenses
+      WHERE group_id = ?`,
+    args: [groupId],
+  });
+  const row = result.rows[0];
+  return {
+    count: Number(row.expense_count) || 0,
+    latestUpdatedAt: row.latest_updated_at || null,
+  };
+}
+
 async function getGroupSettlements(groupId) {
   const db = getClient();
 
@@ -1104,6 +1119,7 @@ function formatExpense(row, splits = [], comments = [], payers = []) {
       text: comment.text,
       time: comment.created_at,
     })),
+    updatedAt: row.updated_at || row.created_at,
   };
 }
 
@@ -1317,6 +1333,7 @@ module.exports = {
   addGroupMember,
   removeGroupMember,
   getGroupExpenses,
+  getGroupExpenseVersion,
   getGroupSettlements,
   createExpense,
   getExpenseById,

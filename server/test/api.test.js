@@ -231,6 +231,13 @@ test('creates groups, records expenses, and settles balances', async (t) => {
   assert.equal(expense.totalAmount, 3.01);
   assert.equal(expense.payers.length, 1);
 
+  const expenseVersionBeforeEditResponse = await request(
+    `/groups/${group.id}/expense-version`,
+  );
+  assert.equal(expenseVersionBeforeEditResponse.status, 200);
+  const expenseVersionBeforeEdit = (await expenseVersionBeforeEditResponse.json()).data;
+  assert.equal(expenseVersionBeforeEdit.count, 1);
+
   const editedExpenseResponse = await request(
     `/groups/${group.id}/expenses/${expense.id}`,
     {
@@ -249,7 +256,19 @@ test('creates groups, records expenses, and settles balances', async (t) => {
     },
   );
   assert.equal(editedExpenseResponse.status, 200);
-  assert.equal((await editedExpenseResponse.json()).data.title, 'Updated dinner');
+  const editedExpense = (await editedExpenseResponse.json()).data;
+  assert.equal(editedExpense.title, 'Updated dinner');
+  assert.ok(editedExpense.updatedAt);
+
+  const expenseVersionAfterEditResponse = await request(
+    `/groups/${group.id}/expense-version`,
+  );
+  assert.equal(expenseVersionAfterEditResponse.status, 200);
+  const expenseVersionAfterEdit = (await expenseVersionAfterEditResponse.json()).data;
+  assert.notEqual(
+    expenseVersionAfterEdit.latestUpdatedAt,
+    expenseVersionBeforeEdit.latestUpdatedAt,
+  );
 
   const markedExpenseResponse = await request(
     `/groups/${group.id}/expenses/${expense.id}`,

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   ArrowLeftRight,
@@ -15,6 +15,7 @@ import {
   UserCircle2,
   Users,
   Wallet,
+  X,
 } from "lucide-react";
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || "").replace(/\/+$/, "");
@@ -92,6 +93,7 @@ export default function AppLayout({
 }: AppLayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const notificationBoxRef = useRef<HTMLDivElement>(null);
 
   const currentUser: StoredUser = useMemo(() => {
     try {
@@ -125,18 +127,23 @@ export default function AppLayout({
   const [lastReadAt, setLastReadAt] = useState(
     () => Number(localStorage.getItem(notificationReadKey)) || 0,
   );
-  const unreadNotificationCount = notifications.filter(
-    (notification) => new Date(notification.createdAt).getTime() > lastReadAt,
-  ).length;
 
-  const fetchNotifications = useCallback(async () => {
+  const unreadNotificationCount = useMemo(
+    () =>
+      notifications.filter(
+        (notification) => new Date(notification.createdAt).getTime() > lastReadAt,
+      ).length,
+    [notifications, lastReadAt],
+  );
+
+  const fetchNotifications = useCallback(async (silent = false) => {
     if (!localStorage.getItem("splitmate_token")) {
       setNotifications([]);
       setNotificationsError(null);
       return;
     }
 
-    setNotificationsLoading(true);
+    if (!silent) setNotificationsLoading(true);
     try {
       const response = await fetch(`${API_BASE_URL}/api/v1/notifications`, {
         headers: getAuthHeaders(),
@@ -160,13 +167,69 @@ export default function AppLayout({
       );
       setNotificationsError(null);
     } catch (error) {
-      setNotificationsError(
-        error instanceof Error ? error.message : "Unable to load notifications.",
-      );
+      if (!silent) {
+        setNotificationsError(
+          error instanceof Error ? error.message : "Unable to load notifications.",
+        );
+      }
     } finally {
-      setNotificationsLoading(false);
+      if (!silent) setNotificationsLoading(false);
     }
   }, []);
+
+  // Fetch immediately on mount + poll every 20s + refresh on tab focus or custom event
+  useEffect(() => {
+    void fetchNotifications(false);
+
+    const pollTimer = window.setInterval(() => {
+      void fetchNotifications(true);
+    }, 20_000);
+
+    const handleRefresh = () => void fetchNotifications(true);
+    window.addEventListener("focus", handleRefresh);
+    window.addEventListener("splitmate:notifications-refresh", handleRefresh);
+
+    return () => {
+      window.clearInterval(pollTimer);
+      window.removeEventListener("focus", handleRefresh);
+      window.removeEventListener("splitmate:notifications-refresh", handleRefresh);
+    };
+  }, [fetchNotifications]);
+
+  // Auto-close notifications whenever the route changes
+  useEffect(() => {
+    setNotificationsOpen(false);
+  }, [location.pathname]);
+
+  // Auto-close notifications on outside click/tap or Escape key
+  useEffect(() => {
+    if (!notificationsOpen) return;
+
+    const handleOutsidePress = (event: MouseEvent | TouchEvent) => {
+      if (
+        notificationBoxRef.current &&
+        !notificationBoxRef.current.contains(event.target as Node)
+      ) {
+        setNotificationsOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setNotificationsOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutsidePress);
+    document.addEventListener("touchstart", handleOutsidePress, { passive: true });
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handleOutsidePress);
+      document.removeEventListener("touchstart", handleOutsidePress);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [notificationsOpen]);
 
   const PageIcon = location.pathname.startsWith("/groups/")
     ? FolderKanban
@@ -213,8 +276,7 @@ export default function AppLayout({
     const nextOpen = !notificationsOpen;
     setNotificationsOpen(nextOpen);
     if (nextOpen) {
-      markNotificationsRead();
-      void fetchNotifications();
+      void fetchNotifications(notifications.length > 0);
     }
   }
 
@@ -369,129 +431,162 @@ export default function AppLayout({
                   )}
                 </button>
 
-                {notificationsOpen && (
-                  <button
-                    type="button"
-                    aria-label="Close notifications"
-                    onClick={() => setNotificationsOpen(false)}
-                    className="fixed inset-0 z-40 cursor-default bg-slate-950/10 sm:bg-transparent"
-                  />
-                )}
-                <div className={`relative ${notificationsOpen ? "z-50" : ""}`}>
+                {/* Notification Bell & Auto-Closing Popover */}
+                <div ref={notificationBoxRef} className="relative">
                   <button
                     type="button"
                     onClick={toggleNotifications}
-                    aria-label="Notifications"
+                    aria-label={
+                      unreadNotificationCount > 0
+                        ? `Notifications (${unreadNotificationCount} unread)`
+                        : "Notifications"
+                    }
                     aria-haspopup="dialog"
                     aria-expanded={notificationsOpen}
                     className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-100 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300 cursor-pointer"
                   >
                     <Bell className="h-4 w-4" />
                     {unreadNotificationCount > 0 && (
-                      <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-indigo-600 px-1 text-[9px] font-bold text-white">
+                      <span className="absolute -top-1.5 -right-1.5 flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-rose-600 px-1 text-[10px] font-extrabold text-white shadow-xs ring-2 ring-white tabular-nums dark:ring-zinc-950">
                         {unreadNotificationCount > 9 ? "9+" : unreadNotificationCount}
                       </span>
                     )}
                   </button>
 
                   {notificationsOpen && (
-                    <section
-                      role="dialog"
-                      aria-label="Notifications"
-                      className="fixed top-14 right-2 left-2 z-50 flex max-h-[min(70dvh,28rem)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl sm:absolute sm:top-full sm:right-0 sm:left-auto sm:mt-2 sm:w-96 dark:border-zinc-800 dark:bg-zinc-900"
-                    >
-                      <header className="flex items-center justify-between gap-3 border-b border-slate-100 p-4 dark:border-zinc-800">
-                        <div>
-                          <h2 className="text-sm font-bold text-slate-900 dark:text-white">
-                            Notifications
-                          </h2>
-                          <p className="text-[11px] text-slate-500 dark:text-zinc-400">
-                            Recent group expenses and payments
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={markNotificationsRead}
-                          className="text-xs font-semibold text-indigo-600 hover:underline dark:text-indigo-400"
-                        >
-                          <Check className="mr-1 inline h-3.5 w-3.5" />
-                          Mark read
-                        </button>
-                      </header>
+                    <>
+                      {/* Mobile backdrop */}
+                      <div
+                        onClick={() => setNotificationsOpen(false)}
+                        className="fixed inset-0 top-16 z-40 bg-slate-950/25 backdrop-blur-[1px] sm:hidden"
+                      />
 
-                      <div className="overflow-y-auto">
-                        {notificationsLoading && notifications.length === 0 ? (
-                          <div className="flex items-center justify-center gap-2 p-8 text-sm text-slate-500 dark:text-zinc-400">
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            Loading notifications
-                          </div>
-                        ) : notificationsError ? (
-                          <div className="p-4 text-sm">
-                            <p className="text-rose-600 dark:text-rose-400">
-                              {notificationsError}
+                      <section
+                        role="dialog"
+                        aria-label="Notifications"
+                        className="fixed top-16 right-2 left-2 z-50 flex max-h-[min(72dvh,28rem)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl sm:absolute sm:top-full sm:right-0 sm:left-auto sm:mt-2 sm:w-96 dark:border-zinc-800 dark:bg-zinc-900"
+                      >
+                        <header className="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-3 dark:border-zinc-800">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h2 className="text-sm font-bold text-slate-900 dark:text-white">
+                                Notifications
+                              </h2>
+                              {unreadNotificationCount > 0 && (
+                                <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-600 dark:bg-rose-950/60 dark:text-rose-300">
+                                  {unreadNotificationCount} new
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-slate-500 dark:text-zinc-400">
+                              Recent group expenses and payments
                             </p>
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            {unreadNotificationCount > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  markNotificationsRead();
+                                  setNotificationsOpen(false);
+                                }}
+                                className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-950/50 cursor-pointer"
+                              >
+                                <Check className="h-3.5 w-3.5" />
+                                Mark read
+                              </button>
+                            )}
                             <button
                               type="button"
-                              onClick={() => void fetchNotifications()}
-                              className="mt-2 font-semibold text-indigo-600 hover:underline dark:text-indigo-400"
+                              onClick={() => setNotificationsOpen(false)}
+                              aria-label="Close notifications"
+                              className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-zinc-800 cursor-pointer"
                             >
-                              Try again
+                              <X className="h-4 w-4" />
                             </button>
                           </div>
-                        ) : notifications.length === 0 ? (
-                          <p className="p-8 text-center text-sm text-slate-500 dark:text-zinc-400">
-                            No notifications yet.
-                          </p>
-                        ) : (
-                          notifications.map((notification) => {
-                            const Icon =
-                              notification.type === "SETTLEMENT" ? ArrowLeftRight : Receipt;
-                            const isUnread =
-                              new Date(notification.createdAt).getTime() > lastReadAt;
-                            return (
-                              <Link
-                                key={notification.id}
-                                to={`/groups/${notification.groupId}`}
-                                onClick={() => setNotificationsOpen(false)}
-                                className="flex gap-3 border-b border-slate-100 p-3.5 transition hover:bg-slate-50 dark:border-zinc-800 dark:hover:bg-zinc-800/60"
+                        </header>
+
+                        <div className="overflow-y-auto">
+                          {notificationsLoading && notifications.length === 0 ? (
+                            <div className="flex items-center justify-center gap-2 p-8 text-sm text-slate-500 dark:text-zinc-400">
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              Loading notifications
+                            </div>
+                          ) : notificationsError ? (
+                            <div className="p-4 text-sm">
+                              <p className="text-rose-600 dark:text-rose-400">
+                                {notificationsError}
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => void fetchNotifications(false)}
+                                className="mt-2 font-semibold text-indigo-600 hover:underline dark:text-indigo-400 cursor-pointer"
                               >
-                                <span className="relative mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400">
-                                  <Icon className="h-4 w-4" />
-                                  {isUnread && (
-                                    <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-indigo-600 dark:border-zinc-900" />
-                                  )}
-                                </span>
-                                <span className="min-w-0 flex-1">
-                                  <span className="flex items-start justify-between gap-2">
-                                    <span className="text-xs font-bold text-slate-800 dark:text-zinc-100">
-                                      {notification.title}
-                                    </span>
-                                    <span className="shrink-0 text-[10px] text-slate-400">
-                                      {formatNotificationTime(notification.createdAt)}
-                                    </span>
-                                  </span>
-                                  <span className="mt-0.5 block truncate text-xs text-slate-600 dark:text-zinc-300">
-                                    {notification.message} · {notification.groupName}
-                                  </span>
-                                  <span className="mt-1 block text-[11px] font-semibold tabular-nums text-indigo-600 dark:text-indigo-400">
-                                    {formatNotificationAmount(
-                                      notification.amount,
-                                      notification.currency,
+                                Try again
+                              </button>
+                            </div>
+                          ) : notifications.length === 0 ? (
+                            <p className="p-8 text-center text-sm text-slate-500 dark:text-zinc-400">
+                              No notifications yet.
+                            </p>
+                          ) : (
+                            notifications.map((notification) => {
+                              const Icon =
+                                notification.type === "SETTLEMENT" ? ArrowLeftRight : Receipt;
+                              const isUnread =
+                                new Date(notification.createdAt).getTime() > lastReadAt;
+                              return (
+                                <Link
+                                  key={notification.id}
+                                  to={`/groups/${notification.groupId}`}
+                                  onClick={() => {
+                                    markNotificationsRead();
+                                    setNotificationsOpen(false);
+                                  }}
+                                  className={`flex gap-3 border-b border-slate-100 p-3.5 transition hover:bg-slate-50 dark:border-zinc-800 dark:hover:bg-zinc-800/60 ${
+                                    isUnread ? "bg-indigo-50/40 dark:bg-indigo-950/20" : ""
+                                  }`}
+                                >
+                                  <span className="relative mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400">
+                                    <Icon className="h-4 w-4" />
+                                    {isUnread && (
+                                      <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-rose-600 dark:border-zinc-900" />
                                     )}
                                   </span>
-                                </span>
-                              </Link>
-                            );
-                          })
-                        )}
-                      </div>
-                      {notificationsLoading && notifications.length > 0 && (
-                        <div className="flex items-center justify-center gap-2 border-t border-slate-100 p-2 text-[11px] text-slate-500 dark:border-zinc-800 dark:text-zinc-400">
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                          Updating
+                                  <span className="min-w-0 flex-1">
+                                    <span className="flex items-start justify-between gap-2">
+                                      <span className="text-xs font-bold text-slate-800 dark:text-zinc-100">
+                                        {notification.title}
+                                      </span>
+                                      <span className="shrink-0 text-[10px] text-slate-400">
+                                        {formatNotificationTime(notification.createdAt)}
+                                      </span>
+                                    </span>
+                                    <span className="mt-0.5 block truncate text-xs text-slate-600 dark:text-zinc-300">
+                                      {notification.message} · {notification.groupName}
+                                    </span>
+                                    <span className="mt-1 block text-[11px] font-semibold tabular-nums text-indigo-600 dark:text-indigo-400">
+                                      {formatNotificationAmount(
+                                        notification.amount,
+                                        notification.currency,
+                                      )}
+                                    </span>
+                                  </span>
+                                </Link>
+                              );
+                            })
+                          )}
                         </div>
-                      )}
-                    </section>
+                        {notificationsLoading && notifications.length > 0 && (
+                          <div className="flex items-center justify-center gap-2 border-t border-slate-100 p-2 text-[11px] text-slate-500 dark:border-zinc-800 dark:text-zinc-400">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            Updating
+                          </div>
+                        )}
+                      </section>
+                    </>
                   )}
                 </div>
 
@@ -499,7 +594,7 @@ export default function AppLayout({
                   type="button"
                   onClick={handleLogout}
                   title="Logout"
-                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 text-rose-600 transition hover:bg-rose-100 lg:hidden dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-400"
+                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 text-rose-600 transition hover:bg-rose-100 lg:hidden dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-400 cursor-pointer"
                 >
                   <LogOut className="h-4 w-4" />
                 </button>

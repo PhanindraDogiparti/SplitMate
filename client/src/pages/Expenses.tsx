@@ -92,10 +92,10 @@ function normalizeMembers(rawMembers: unknown): MemberOption[] {
       id: isCurrentUser ? "you" : rawId,
       name: String(
         obj.name ??
-          obj.fullName ??
-          nestedUser.name ??
-          nestedUser.fullName ??
-          (isCurrentUser ? "You" : `Member ${idx + 1}`)
+        obj.fullName ??
+        nestedUser.name ??
+        nestedUser.fullName ??
+        (isCurrentUser ? "You" : `Member ${idx + 1}`)
       ),
       email: String(obj.email ?? nestedUser.email ?? ""),
     };
@@ -531,7 +531,7 @@ export default function Expenses() {
                     placeholder="e.g. Dinner at Fisherman's Wharf"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
-                    className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-slate-50/60 px-4 text-base font-semibold text-slate-900 placeholder:font-normal placeholder:text-slate-400 outline-none transition focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white"
+                    className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-slate-50/60 px-4 text-base font-semibold text-slate-900 placeholder:font-normal placeholder:text-slate-400 outline-none transition focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white dark:focus:bg-zinc-900"
                   />
                 </div>
 
@@ -551,7 +551,7 @@ export default function Expenses() {
                       value={amountInput}
                       onWheel={preventWheelChange}
                       onChange={(e) => setAmountInput(sanitizeDecimal(e.target.value, 2))}
-                      className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50/60 pr-4 pl-9 font-display text-xl font-extrabold text-slate-900 tabular-nums outline-none transition focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white"
+                      className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50/60 pr-4 pl-9 font-display text-xl font-extrabold text-slate-900 tabular-nums outline-none transition focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white dark:focus:bg-zinc-900"
                     />
                   </div>
                 </div>
@@ -664,11 +664,10 @@ export default function Expenses() {
                       type="button"
                       key={tab.id}
                       onClick={() => setSplitMethod(tab.id)}
-                      className={`flex items-center justify-center gap-1.5 rounded-xl border py-2.5 text-xs font-bold transition cursor-pointer ${
-                        active
-                          ? "border-indigo-600 bg-indigo-600 text-white shadow-xs"
-                          : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-300"
-                      }`}
+                      className={`flex items-center justify-center gap-1.5 rounded-xl border py-2.5 text-xs font-bold transition cursor-pointer ${active
+                        ? "border-indigo-600 bg-indigo-600 text-white shadow-xs"
+                        : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-300"
+                        }`}
                     >
                       <Icon className="h-3.5 w-3.5" />
                       {tab.label}
@@ -693,11 +692,10 @@ export default function Expenses() {
                         className="flex items-center gap-3 text-left cursor-pointer"
                       >
                         <span
-                          className={`flex h-5 w-5 items-center justify-center rounded-md border transition ${
-                            checked
-                              ? "border-indigo-600 bg-indigo-600 text-white"
-                              : "border-slate-300 bg-white dark:border-zinc-700 dark:bg-zinc-950"
-                          }`}
+                          className={`flex h-5 w-5 items-center justify-center rounded-md border transition ${checked
+                            ? "border-indigo-600 bg-indigo-600 text-white"
+                            : "border-slate-300 bg-white dark:border-zinc-700 dark:bg-zinc-950"
+                            }`}
                         >
                           {checked && <Check className="h-3.5 w-3.5" />}
                         </span>
@@ -836,21 +834,19 @@ export default function Expenses() {
 
               {totalPaise > 0 && splitCheck.isValid && (
                 <div
-                  className={`mt-4 flex items-center justify-between rounded-2xl border p-3.5 ${
-                    yourNetEffect >= 0
-                      ? "border-emerald-200/80 bg-emerald-50/70 dark:border-emerald-900/50 dark:bg-emerald-950/30"
-                      : "border-rose-200/80 bg-rose-50/70 dark:border-rose-900/50 dark:bg-rose-950/30"
-                  }`}
+                  className={`mt-4 flex items-center justify-between rounded-2xl border p-3.5 ${yourNetEffect >= 0
+                    ? "border-emerald-200/80 bg-emerald-50/70 dark:border-emerald-900/50 dark:bg-emerald-950/30"
+                    : "border-rose-200/80 bg-rose-50/70 dark:border-rose-900/50 dark:bg-rose-950/30"
+                    }`}
                 >
                   <span className="text-xs font-bold text-slate-700 dark:text-zinc-200">
                     {yourNetEffect >= 0 ? "You will get back" : "You will owe"}
                   </span>
                   <span
-                    className={`font-display text-base font-extrabold tabular-nums ${
-                      yourNetEffect >= 0
-                        ? "text-emerald-600 dark:text-emerald-400"
-                        : "text-rose-600 dark:text-rose-400"
-                    }`}
+                    className={`font-display text-base font-extrabold tabular-nums ${yourNetEffect >= 0
+                      ? "text-emerald-600 dark:text-emerald-400"
+                      : "text-rose-600 dark:text-rose-400"
+                      }`}
                   >
                     {formatINR(Math.abs(yourNetEffect))}
                   </span>
@@ -858,11 +854,10 @@ export default function Expenses() {
               )}
 
               <div
-                className={`mt-4 flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-xs font-semibold ${
-                  splitCheck.isValid && payerCheck.isValid
-                    ? "border-emerald-200 bg-emerald-50/60 text-emerald-700 dark:border-emerald-800/40 dark:bg-emerald-950/30 dark:text-emerald-300"
-                    : "border-amber-200 bg-amber-50/60 text-amber-700 dark:border-amber-800/40 dark:bg-amber-950/30 dark:text-amber-300"
-                }`}
+                className={`mt-4 flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-xs font-semibold ${splitCheck.isValid && payerCheck.isValid
+                  ? "border-emerald-200 bg-emerald-50/60 text-emerald-700 dark:border-emerald-800/40 dark:bg-emerald-950/30 dark:text-emerald-300"
+                  : "border-amber-200 bg-amber-50/60 text-amber-700 dark:border-amber-800/40 dark:bg-amber-950/30 dark:text-amber-300"
+                  }`}
               >
                 {splitCheck.isValid && payerCheck.isValid ? (
                   <Sparkles className="h-4 w-4 shrink-0" />
