@@ -393,7 +393,7 @@ export default function GroupDetailsPage() {
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
 
   useEffect(() => {
-    const timer = setInterval(() => setNowMs(Date.now()), 500);
+    const timer = setInterval(() => setNowMs(Date.now()), 60_000);
     return () => clearInterval(timer);
   }, []);
 
@@ -969,13 +969,28 @@ export default function GroupDetailsPage() {
         throw new Error(payload.message || "Failed to update expense status.");
       }
 
-      await fetchGroupDetail();
+      setGroup((currentGroup) =>
+        currentGroup
+          ? {
+              ...currentGroup,
+              expenses: currentGroup.expenses.map((currentExpense) =>
+                currentExpense.id === expense.id
+                  ? {
+                      ...currentExpense,
+                      isSettled: markingPaid,
+                      settledAt: markingPaid ? currentNow : undefined,
+                    }
+                  : currentExpense,
+              ),
+            }
+          : currentGroup,
+      );
       if (markingPaid) {
         setAlertBanner(null);
         triggerSuccessAnimation(
           {
             headline: "Marked as Paid!",
-            amountLabel: formatINR(expense.totalAmount, currencyCode),
+            amountLabel: formatINR(expense.yourShare, currencyCode),
             subtext: `"${expense.title}" • Reopen available for 24 hours`,
           },
           expense.id
@@ -1608,7 +1623,7 @@ export default function GroupDetailsPage() {
                               }`}
                             >
                               {hasLent
-                                ? `You lent ${formatINR(netDiff, currencyCode)}`
+                                ? `You are owed ${formatINR(netDiff, currencyCode)}`
                                 : owes
                                   ? `You owe ${formatINR(Math.abs(netDiff), currencyCode)}`
                                   : "Settled up"}

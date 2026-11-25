@@ -20,12 +20,7 @@ notificationService.sendGroupInvitationEmail = async (invitation) => {
 };
 
 const emailService = require('../src/services/email.service');
-const splitEmails = [];
 emailService.sendWelcomeEmail = async () => ({ success: true });
-emailService.sendSplitSummaryEmail = async (email) => {
-  splitEmails.push(email);
-  return { success: true };
-};
 
 const app = require('../src/app');
 const { getClient, closeDatabase } = require('../src/config/database');
@@ -206,7 +201,7 @@ test('creates groups, records expenses, and settles balances', async (t) => {
   });
   assert.equal(invalidExpense.status, 400);
 
-  const expenseResponse = await request(`/groups/${group.id}/expenses`, {
+  const multiplePayerExpense = await request(`/groups/${group.id}/expenses`, {
     method: 'POST',
     body: JSON.stringify({
       title: 'Dinner',
@@ -215,16 +210,26 @@ test('creates groups, records expenses, and settles balances', async (t) => {
         { memberId: alex.id, amount: 2.01 },
         { memberId: owner.id, amount: 1 },
       ],
+    }),
+  });
+  assert.equal(multiplePayerExpense.status, 400);
+
+  const expenseResponse = await request(`/groups/${group.id}/expenses`, {
+    method: 'POST',
+    body: JSON.stringify({
+      title: 'Dinner',
+      amount: 3.01,
+      paidByMemberId: alex.id,
       splits: [
-        { memberId: alex.id, amount: 1.01 },
-        { memberId: sam.id, amount: 2 },
+        { memberId: alex.id, amount: 2.01 },
+        { memberId: sam.id, amount: 1 },
       ],
     }),
   });
   assert.equal(expenseResponse.status, 201);
   const expense = (await expenseResponse.json()).data;
   assert.equal(expense.totalAmount, 3.01);
-  assert.equal(expense.payers.length, 2);
+  assert.equal(expense.payers.length, 1);
 
   const editedExpenseResponse = await request(
     `/groups/${group.id}/expenses/${expense.id}`,
@@ -235,22 +240,16 @@ test('creates groups, records expenses, and settles balances', async (t) => {
         amount: 3.01,
         category: 'Food',
         date: '2025-01-15',
-        payers: [
-          { memberId: alex.id, amount: 2.01 },
-          { memberId: owner.id, amount: 1 },
-        ],
+        paidByMemberId: alex.id,
         splits: [
-          { memberId: alex.id, amount: 1.01 },
-          { memberId: sam.id, amount: 2 },
+          { memberId: alex.id, amount: 2.01 },
+          { memberId: sam.id, amount: 1 },
         ],
       }),
     },
   );
   assert.equal(editedExpenseResponse.status, 200);
   assert.equal((await editedExpenseResponse.json()).data.title, 'Updated dinner');
-  assert.ok(splitEmails.some(
-    (email) => email.expenseTitle === 'Updated dinner' && email.groupId === group.id,
-  ));
 
   const markedExpenseResponse = await request(
     `/groups/${group.id}/expenses/${expense.id}`,
@@ -285,9 +284,9 @@ test('creates groups, records expenses, and settles balances', async (t) => {
 
   const groupDetails = await request(`/groups/${group.id}`);
   const details = (await groupDetails.json()).data;
-  assert.equal(details.members.find((member) => member.id === owner.id).netBalance, 1);
+  assert.equal(details.members.find((member) => member.id === owner.id).netBalance, 0);
   assert.equal(details.members.find((member) => member.id === alex.id).netBalance, 0.25);
-  assert.equal(details.members.find((member) => member.id === sam.id).netBalance, -1.25);
+  assert.equal(details.members.find((member) => member.id === sam.id).netBalance, -0.25);
   assert.equal(details.settlements[0].fromMemberId, sam.id);
   assert.equal(details.settlements[0].toMemberId, alex.id);
   assert.equal(details.expenses[0].splits.length, 2);
@@ -307,8 +306,8 @@ test('creates groups, records expenses, and settles balances', async (t) => {
   assert.ok(transactions.some((item) => item.kind === 'SETTLEMENT'));
   const expenseTransaction = transactions.find((item) => item.id === expense.id);
   assert.equal(expenseTransaction.totalAmount, 3.01);
-  assert.equal(expenseTransaction.yourShare, 1.01);
-  assert.equal(expenseTransaction.paidByYouAmount, 2.01);
+  assert.equal(expenseTransaction.yourShare, 2.01);
+  assert.equal(expenseTransaction.paidByYouAmount, 3.01);
   assert.equal(expenseTransaction.paidByYou, true);
 
   authToken = creatorToken;
@@ -320,7 +319,7 @@ test('creates groups, records expenses, and settles balances', async (t) => {
   );
   assert.equal(refreshedGroup.totalSpend, 3.01);
   assert.equal(refreshedGroup.myTotalShare, 0);
-  assert.equal(refreshedGroup.netBalance, 1);
+  assert.equal(refreshedGroup.netBalance, 0);
 
   const excessiveSettlement = await request(`/groups/${group.id}/settlements`, {
     method: 'POST',

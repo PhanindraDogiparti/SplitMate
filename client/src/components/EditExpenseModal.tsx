@@ -12,11 +12,9 @@ import {
   IndianRupee,
   Loader2,
   Percent,
-  Plus,
   Receipt,
   StickyNote,
   Tag,
-  Trash2,
   UserCheck,
   Users,
   X,
@@ -59,11 +57,6 @@ interface EditExpenseModalProps {
   onUpdated: () => Promise<void>;
 }
 
-interface AllocationInput {
-  memberId: string;
-  amount: string;
-}
-
 interface SplitRowState {
   memberId: string;
   included: boolean;
@@ -93,21 +86,6 @@ function dividePaise(totalPaise: number, weights: number[]): number[] {
     if (rem > 0) rem -= 1;
     return val + extra;
   });
-}
-
-function syncPayers(payers: AllocationInput[], nextCents: number, nextAmountStr: string): AllocationInput[] {
-  if (payers.length === 0) return payers;
-  if (payers.length === 1) return [{ ...payers[0], amount: nextAmountStr }];
-
-  const currentCents = payers.map((p) => Math.max(0, toCents(p.amount)));
-  const currentSum = currentCents.reduce((a, b) => a + b, 0);
-  const weights = currentSum > 0 ? currentCents : payers.map(() => 1);
-  const nextParts = dividePaise(nextCents, weights);
-
-  return payers.map((p, i) => ({
-    ...p,
-    amount: (nextParts[i] / 100).toFixed(2),
-  }));
 }
 
 function applySplits(
@@ -187,15 +165,8 @@ function initSplits(expense: EditableExpense, members: GroupMember[]): SplitRowS
   });
 }
 
-function initPayers(expense: EditableExpense): AllocationInput[] {
-  const list =
-    expense.payers.length > 0
-      ? expense.payers
-      : [{ memberId: expense.paidById, memberName: "", amount: expense.totalAmount }];
-  return list.map((p) => ({
-    memberId: p.memberId,
-    amount: Number(p.amount).toFixed(2),
-  }));
+function initPayerId(expense: EditableExpense, members: GroupMember[]): string {
+  return expense.paidById || expense.payers[0]?.memberId || members[0]?.id || "";
 }
 
 function toDateInput(value: string): string {
@@ -227,7 +198,7 @@ export default function EditExpenseModal({
   const [paymentMethod, setPaymentMethod] = useState(expense.paymentMethod);
   const [date, setDate] = useState(toDateInput(expense.date));
   const [notes, setNotes] = useState(expense.notes || "");
-  const [payers, setPayers] = useState<AllocationInput[]>(() => initPayers(expense));
+  const [payerId, setPayerId] = useState(() => initPayerId(expense, members));
   const [splitRows, setSplitRows] = useState<SplitRowState[]>(() => initSplits(expense, members));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -241,7 +212,7 @@ export default function EditExpenseModal({
     setPaymentMethod(expense.paymentMethod);
     setDate(toDateInput(expense.date));
     setNotes(expense.notes || "");
-    setPayers(initPayers(expense));
+    setPayerId(initPayerId(expense, members));
     setSplitRows(initSplits(expense, members));
     setError(null);
   }, [expense, members, open]);
@@ -258,13 +229,12 @@ export default function EditExpenseModal({
   if (!open) return null;
 
   const totalCents = toCents(amount);
-  const payerTotalCents = payers.reduce((s, p) => s + toCents(p.amount), 0);
   const splitTotalCents = splitRows.reduce(
     (s, r) => (r.included ? s + toCents(r.amount) : s),
     0,
   );
 
-  const payersMatch = totalCents > 0 && payerTotalCents === totalCents;
+  const payersMatch = totalCents > 0 && members.some((member) => member.id === payerId);
   const splitsMatch = totalCents > 0 && splitTotalCents === totalCents;
   const canSave = Boolean(title.trim()) && payersMatch && splitsMatch && !saving;
   const sym = currencyCode === "INR" ? "₹" : "";
@@ -272,7 +242,6 @@ export default function EditExpenseModal({
   function onAmountChange(val: string) {
     setAmount(val);
     const cents = toCents(val);
-    setPayers((prev) => syncPayers(prev, cents, val));
     setSplitRows((prev) => applySplits(cents, splitType, prev));
   }
 
@@ -338,7 +307,7 @@ export default function EditExpenseModal({
             title: title.trim(),
             amount: Number(amount),
             category: category.trim() || "Other",
-            payers: payers.map((p) => ({ memberId: p.memberId, amount: Number(p.amount) })),
+            paidByMemberId: payerId,
             splitType,
             paymentMethod,
             date,
@@ -417,7 +386,7 @@ export default function EditExpenseModal({
                 maxLength={160}
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 text-sm font-medium outline-none focus:border-indigo-500 focus:bg-white dark:border-zinc-800 dark:bg-zinc-950 dark:text-white"
+                className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 text-sm font-medium outline-none focus:border-indigo-500 focus:bg-white dark:border-zinc-800 dark:bg-zinc-950 dark:text-white dark:focus:bg-zinc-900"
               />
             </div>
 
@@ -438,7 +407,7 @@ export default function EditExpenseModal({
                   value={amount}
                   onWheel={preventWheelChange}
                   onChange={(e) => onAmountChange(e.target.value)}
-                  className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50/70 pr-3.5 pl-9 font-display text-sm font-extrabold tabular-nums outline-none focus:border-indigo-500 focus:bg-white dark:border-zinc-800 dark:bg-zinc-950 dark:text-white"
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50/70 pr-3.5 pl-9 font-display text-sm font-extrabold tabular-nums outline-none focus:border-indigo-500 focus:bg-white dark:border-zinc-800 dark:bg-zinc-950 dark:text-white dark:focus:bg-zinc-900"
                 />
               </div>
             </div>
@@ -454,7 +423,7 @@ export default function EditExpenseModal({
                   maxLength={80}
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
-                  className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3 text-xs font-semibold outline-none focus:border-indigo-500 focus:bg-white sm:text-sm dark:border-zinc-800 dark:bg-zinc-950 dark:text-white"
+                  className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3 text-xs font-semibold outline-none focus:border-indigo-500 focus:bg-white sm:text-sm dark:border-zinc-800 dark:bg-zinc-950 dark:text-white dark:focus:bg-zinc-900"
                 />
               </div>
 
@@ -519,93 +488,23 @@ export default function EditExpenseModal({
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-zinc-200">
                   Paid by
                 </h3>
-                <span
-                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums ${
-                    payersMatch
-                      ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300"
-                      : "bg-amber-100 text-amber-700 dark:bg-amber-950/70 dark:text-amber-300"
-                  }`}
-                >
-                  {payersMatch && <CheckCircle2 className="h-3 w-3" />}
-                  {(payerTotalCents / 100).toFixed(2)} / {(totalCents / 100).toFixed(2)}
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300">
+                  {payersMatch ? "Full amount" : "Choose a payer"}
                 </span>
               </div>
-
-              <button
-                type="button"
-                disabled={payers.length >= members.length}
-                onClick={() => {
-                  const nextMember = members.find((m) => !payers.some((p) => p.memberId === m.id));
-                  if (!nextMember) return;
-                  const rem = Math.max(0, totalCents - payerTotalCents);
-                  setPayers((prev) => [...prev, { memberId: nextMember.id, amount: (rem / 100).toFixed(2) }]);
-                }}
-                className="inline-flex h-8 items-center gap-1 rounded-lg border border-indigo-200 bg-white px-2.5 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 disabled:opacity-40 dark:border-indigo-800/60 dark:bg-zinc-900 dark:text-indigo-400 cursor-pointer"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Add payer
-              </button>
             </div>
 
-            <div className="space-y-2">
-              {payers.map((payer, idx) => (
-                <div key={`${idx}-${payer.memberId}`} className="flex items-center gap-2">
-                  <div className="relative min-w-0 flex-1">
-                    <select
-                      value={payer.memberId}
-                      onChange={(e) =>
-                        setPayers((prev) =>
-                          prev.map((item, i) => (i === idx ? { ...item, memberId: e.target.value } : item)),
-                        )
-                      }
-                      className="h-10 w-full appearance-none rounded-xl border border-slate-200 bg-white pr-8 pl-3 text-xs font-semibold sm:text-sm dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 cursor-pointer"
-                    >
-                      {members
-                        .filter(
-                          (m) =>
-                            m.id === payer.memberId ||
-                            !payers.some((other, i) => i !== idx && other.memberId === m.id),
-                        )
-                        .map((m) => (
-                          <option key={m.id} value={m.id}>{m.name}</option>
-                        ))}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute top-1/2 right-2.5 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  </div>
-
-                  <div className="relative w-28 sm:w-32">
-                    <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-xs font-bold text-slate-400">
-                      {sym}
-                    </span>
-                    <input
-                      aria-label="Payer amount"
-                      type="text"
-                      inputMode="decimal"
-                      value={payer.amount}
-                      onWheel={preventWheelChange}
-                      onChange={(e) =>
-                        setPayers((prev) =>
-                          prev.map((item, i) => (i === idx ? { ...item, amount: e.target.value } : item)),
-                        )
-                      }
-                      className="h-10 w-full rounded-xl border border-slate-200 bg-white pr-2.5 pl-6 text-right text-xs font-bold tabular-nums sm:text-sm dark:border-zinc-800 dark:bg-zinc-900"
-                    />
-                  </div>
-
-                  {payers.length > 1 && (
-                    <button
-                      type="button"
-                      aria-label="Remove payer"
-                      onClick={() =>
-                        setPayers((prev) => syncPayers(prev.filter((_, i) => i !== idx), totalCents, amount))
-                      }
-                      className="flex h-10 w-9 items-center justify-center rounded-xl border border-rose-200 bg-rose-50/60 text-rose-600 hover:bg-rose-100 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-400 cursor-pointer"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
-              ))}
+            <div className="relative">
+              <select
+                value={payerId}
+                onChange={(e) => setPayerId(e.target.value)}
+                className="h-10 w-full appearance-none rounded-xl border border-slate-200 bg-white pr-8 pl-3 text-xs font-semibold sm:text-sm dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 cursor-pointer"
+              >
+                {members.map((member) => (
+                  <option key={member.id} value={member.id}>{member.name}</option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute top-1/2 right-2.5 h-4 w-4 -translate-y-1/2 text-slate-400" />
             </div>
           </section>
 

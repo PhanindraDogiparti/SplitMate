@@ -135,10 +135,8 @@ export default function Expenses() {
   );
   const [notes, setNotes] = useState("");
 
-  // Payer State (Single or Multi-Payer)
-  const [isMultiPayer, setIsMultiPayer] = useState(false);
+  // Payer State
   const [singlePayerId, setSinglePayerId] = useState("you");
-  const [multiPaidMap, setMultiPaidMap] = useState<Record<string, string>>({});
 
   // Split State
   const [splitMethod, setSplitMethod] = useState<SplitMethod>("EQUAL");
@@ -181,6 +179,11 @@ export default function Expenses() {
       setGroupId(targetId);
 
       const activeGroup = fetchedGroups.find((g) => g.id === targetId);
+      setSinglePayerId((currentPayerId) =>
+        activeGroup?.members.some((member) => member.id === currentPayerId)
+          ? currentPayerId
+          : activeGroup?.members[0]?.id || "you",
+      );
       if (activeGroup && activeGroup.members.length > 0) {
         setSelectedParticipantIds(activeGroup.members.map((m) => m.id));
       } else {
@@ -222,19 +225,19 @@ export default function Expenses() {
   async function handleSelectGroup(nextId: string) {
     setGroupId(nextId);
     setSearchParams(nextId === "non_group" ? {} : { groupId: nextId });
-    setSinglePayerId("you");
-    setMultiPaidMap({});
     setExactMap({});
     setPercentMap({});
     setSharesMap({});
     setAdjustMap({});
 
     if (nextId === "non_group") {
+      setSinglePayerId("you");
       setSelectedParticipantIds(["you"]);
       return;
     }
 
     const found = groups.find((g) => g.id === nextId);
+    setSinglePayerId(found?.members[0]?.id || "you");
     if (found && found.members.length > 1) {
       setSelectedParticipantIds(found.members.map((m) => m.id));
       return;
@@ -250,6 +253,7 @@ export default function Expenses() {
           Array.isArray(payload.data) ? payload.data : payload
         );
         if (fetchedMembers.length > 0) {
+          setSinglePayerId(fetchedMembers[0].id);
           setGroups((prev) =>
             prev.map((g) => (g.id === nextId ? { ...g, members: fetchedMembers } : g))
           );
@@ -271,42 +275,20 @@ export default function Expenses() {
 
   const payerCheck = useMemo(() => {
     if (totalPaise === 0) {
-      return { isValid: false, label: "Enter bill amount", list: [] };
+      return { isValid: false, list: [] };
     }
 
-    if (!isMultiPayer) {
-      const p =
-        selectedGroup.members.find((m) => m.id === singlePayerId) ??
-        selectedGroup.members[0];
-      return {
-        isValid: true,
-        label: `${p.name} paid ${formatINR(totalPaise / 100)}`,
-        list: [{ userId: p.id, name: p.name, paid: totalPaise / 100 }],
-      };
+    const payer =
+      selectedGroup.members.find((member) => member.id === singlePayerId) ??
+      selectedGroup.members[0];
+    if (!payer) {
+      return { isValid: false, list: [] };
     }
-
-    const list = selectedGroup.members
-      .map((m) => ({
-        userId: m.id,
-        name: m.name,
-        paid: Math.max(0, parseFloat(multiPaidMap[m.id] || "0") || 0),
-      }))
-      .filter((x) => x.paid > 0);
-
-    const paidPaise = Math.round(list.reduce((sum, x) => sum + x.paid * 100, 0));
-    const diff = (totalPaise - paidPaise) / 100;
-
     return {
-      isValid: diff === 0 && list.length > 0,
-      label:
-        diff === 0
-          ? "Payer amounts match total"
-          : diff > 0
-            ? `${formatINR(diff)} left to assign`
-            : `${formatINR(Math.abs(diff))} over total`,
-      list,
+      isValid: true,
+      list: [{ userId: payer.id, name: payer.name, paid: totalPaise / 100 }],
     };
-  }, [totalPaise, isMultiPayer, singlePayerId, multiPaidMap, selectedGroup.members]);
+  }, [totalPaise, singlePayerId, selectedGroup.members]);
 
   const splitCheck = useMemo(() => {
     const participants: MemberOption[] = selectedGroup.members.filter((m) =>
@@ -476,10 +458,7 @@ export default function Expenses() {
           paymentMethod,
           date: expenseDate,
           splitType: splitMethod,
-          payers: payerCheck.list.map((payer) => ({
-            memberId: payer.userId,
-            amount: payer.paid,
-          })),
+          paidByMemberId: payerCheck.list[0]?.userId,
           splits: splitCheck.rows.map((participant) => ({
             memberId: participant.id,
             amount: participant.owed,
@@ -643,26 +622,20 @@ export default function Expenses() {
                 <div className="flex min-w-0 flex-nowrap items-center gap-1.5 whitespace-nowrap text-xs text-slate-700 sm:flex-wrap sm:gap-2 sm:text-sm dark:text-zinc-200">
                   <UserCheck className="h-4 w-4 shrink-0 text-indigo-600 dark:text-indigo-400" />
                   <span className="shrink-0">Paid by</span>
-                  {!isMultiPayer ? (
-                    <div className="relative inline-flex shrink-0 items-center">
-                      <select
-                        value={singlePayerId}
-                        onChange={(e) => setSinglePayerId(e.target.value)}
-                        className="h-7 max-w-[7.5rem] appearance-none truncate rounded-lg border border-indigo-200 bg-white pr-6 pl-2.5 text-[11px] font-bold leading-none text-indigo-700 outline-none transition hover:border-indigo-300 focus:border-indigo-500 sm:h-8 sm:max-w-none sm:pr-8 sm:pl-3 sm:text-xs dark:border-indigo-800 dark:bg-zinc-900 dark:text-indigo-300 cursor-pointer"
-                      >
-                        {selectedGroup.members.map((m) => (
-                          <option key={m.id} value={m.id}>
-                            {m.name}
-                          </option>
-                        ))}
-                      </select>
-                      <ChevronDown className="pointer-events-none absolute top-1/2 right-1.5 h-3 w-3 -translate-y-1/2 text-indigo-600 sm:right-2.5 sm:h-3.5 sm:w-3.5 dark:text-indigo-400" />
-                    </div>
-                  ) : (
-                    <span className="inline-flex h-7 shrink-0 items-center rounded-lg bg-indigo-600 px-2.5 text-[11px] font-bold text-white sm:h-8 sm:px-3 sm:text-xs">
-                      Multiple
-                    </span>
-                  )}
+                  <div className="relative inline-flex shrink-0 items-center">
+                    <select
+                      value={singlePayerId}
+                      onChange={(e) => setSinglePayerId(e.target.value)}
+                      className="h-7 max-w-[7.5rem] appearance-none truncate rounded-lg border border-indigo-200 bg-white pr-6 pl-2.5 text-[11px] font-bold leading-none text-indigo-700 outline-none transition hover:border-indigo-300 focus:border-indigo-500 sm:h-8 sm:max-w-none sm:pr-8 sm:pl-3 sm:text-xs dark:border-indigo-800 dark:bg-zinc-900 dark:text-indigo-300 cursor-pointer"
+                    >
+                      {selectedGroup.members.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute top-1/2 right-1.5 h-3 w-3 -translate-y-1/2 text-indigo-600 sm:right-2.5 sm:h-3.5 sm:w-3.5 dark:text-indigo-400" />
+                  </div>
                   <span className="hidden sm:inline">and split</span>
                   <span className="hidden h-8 items-center rounded-lg bg-white px-3 text-xs font-bold text-indigo-700 shadow-2xs sm:inline-flex dark:bg-zinc-900 dark:text-indigo-300">
                     {splitMethod === "EQUAL"
@@ -675,57 +648,7 @@ export default function Expenses() {
                   </span>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setIsMultiPayer(!isMultiPayer)}
-                  className="shrink-0 whitespace-nowrap text-[11px] font-semibold text-indigo-600 underline hover:no-underline sm:text-xs dark:text-indigo-400 cursor-pointer"
-                >
-                  {isMultiPayer ? "Single payer" : "Multiple payers?"}
-                </button>
               </div>
-
-              {isMultiPayer && (
-                <div className="mt-4 space-y-2 rounded-2xl border border-slate-200/80 bg-slate-50/60 p-4 dark:border-zinc-800 dark:bg-zinc-950/50">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-700 dark:text-zinc-200">
-                      Enter amount paid by each person
-                    </span>
-                    <span
-                      className={`text-xs font-semibold ${
-                        payerCheck.isValid ? "text-emerald-600" : "text-amber-600"
-                      }`}
-                    >
-                      {payerCheck.label}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    {selectedGroup.members.map((m) => (
-                      <div
-                        key={m.id}
-                        className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-zinc-800 dark:bg-zinc-900"
-                      >
-                        <span className="text-xs font-semibold text-slate-700 dark:text-zinc-200">
-                          {m.name}
-                        </span>
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          placeholder="0.00"
-                          value={multiPaidMap[m.id] ?? ""}
-                          onWheel={preventWheelChange}
-                          onChange={(e) =>
-                            setMultiPaidMap((prev) => ({
-                              ...prev,
-                              [m.id]: sanitizeDecimal(e.target.value, 2),
-                            }))
-                          }
-                          className="w-24 bg-transparent text-right text-xs font-bold tabular-nums outline-none"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {[

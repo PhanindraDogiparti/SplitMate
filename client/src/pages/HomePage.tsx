@@ -296,7 +296,7 @@ export default function HomePage() {
               <p className="mx-auto mt-5 max-w-xl text-base leading-relaxed text-slate-600 sm:text-lg lg:mx-0 dark:text-zinc-400">
                 Track trips, roommate rent, and 1-on-1 outings effortlessly. SplitMate supports{" "}
                 <strong className="font-semibold text-slate-800 dark:text-zinc-200">
-                  multi-payer bills
+                  simple single-payer bills
                 </strong>
                 ,{" "}
                 <strong className="font-semibold text-slate-800 dark:text-zinc-200">
@@ -497,7 +497,7 @@ export default function HomePage() {
               {
                 step: "02",
                 title: "Log Bills with Quick-Entry Split",
-                desc: "Type who paid (even multiple payers on one receipt) and split equally, by exact rupee amounts, percentages, or shares.",
+                desc: "Choose who paid and split equally, by exact rupee amounts, percentages, or shares.",
               },
               {
                 step: "03",
@@ -622,8 +622,8 @@ export default function HomePage() {
             {[
               {
                 icon: CreditCard,
-                title: "Multiple Payers on One Bill",
-                desc: "Did two friends split paying for dinner? Record exact contributions for every payer on a single expense.",
+                title: "Clear Payer Tracking",
+                desc: "Choose one group member as the payer for each expense and keep balances easy to follow.",
               },
               {
                 icon: Repeat,

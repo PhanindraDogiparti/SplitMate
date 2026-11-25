@@ -7,7 +7,6 @@ const {
   toAmount,
   allocateEqualShares,
 } = require('../utils/helpers');
-const emailService = require('./email.service');
 const { sendGroupInvitationEmail } = require('./notification.service');
 
 async function withWriteTransaction(db, work) {
@@ -23,32 +22,22 @@ async function withWriteTransaction(db, work) {
 }
 
 function normalizePayers(amountMinor, payers, paidByMemberId, memberIds) {
-  const allocations = payers?.length
-    ? payers.map((payer) => ({
-      memberId: payer.memberId,
-      amountMinor: toMinorUnits(payer.amount),
-    }))
-    : [{ memberId: paidByMemberId, amountMinor }];
-  const seenMemberIds = new Set();
-
-  for (const payer of allocations) {
-    if (!memberIds.has(payer.memberId)) {
-      throw ApiError.badRequest('Every payer must be a member of this group.');
-    }
-    if (seenMemberIds.has(payer.memberId)) {
-      throw ApiError.badRequest('A member can only be listed once as a payer.');
-    }
-    if (payer.amountMinor <= 0) {
-      throw ApiError.badRequest('Each payer amount must be greater than zero.');
-    }
-    seenMemberIds.add(payer.memberId);
+  if (payers?.length > 1) {
+    throw ApiError.badRequest('An expense can only have one payer.');
   }
 
-  if (allocations.reduce((total, payer) => total + payer.amountMinor, 0) !== amountMinor) {
+  const payer = payers?.[0]
+    ? { memberId: payers[0].memberId, amountMinor: toMinorUnits(payers[0].amount) }
+    : { memberId: paidByMemberId, amountMinor };
+
+  if (!memberIds.has(payer.memberId)) {
+    throw ApiError.badRequest('The payer must be a member of this group.');
+  }
+  if (payer.amountMinor !== amountMinor) {
     throw ApiError.badRequest('Payer amounts must add up to the total expense amount.');
   }
 
-  return allocations;
+  return [payer];
 }
 
 async function createGroup({ name, description, type, customTypeLabel, currency, simplifyDebts, members }) {
@@ -421,41 +410,40 @@ async function getGroupExpenses(groupId) {
       ORDER BY e.expense_date DESC, e.created_at DESC`,
     args: [groupId],
   });
-
   if (expensesResult.rows.length === 0) {
     return [];
   }
 
-  const splitsResult = await db.execute({
-    sql: `SELECT s.expense_id, s.member_id, s.amount_minor, m.name AS member_name
-      FROM expense_splits s
-      JOIN group_members m ON m.id = s.member_id
-      WHERE s.expense_id IN (
-        SELECT id FROM expenses WHERE group_id = ?
-      )
-      ORDER BY m.name`,
-    args: [groupId],
-  });
-
-  const commentsResult = await db.execute({
-    sql: `SELECT c.*
-      FROM expense_comments c
-      JOIN expenses e ON e.id = c.expense_id
-      WHERE e.group_id = ?
-      ORDER BY c.created_at ASC`,
-    args: [groupId],
-  });
-
-  const payersResult = await db.execute({
-    sql: `SELECT p.expense_id, p.member_id, p.amount_minor, m.name AS member_name
-      FROM expense_payers p
-      JOIN group_members m ON m.id = p.member_id
-      WHERE p.expense_id IN (
-        SELECT id FROM expenses WHERE group_id = ?
-      )
-      ORDER BY m.name`,
-    args: [groupId],
-  });
+  const [splitsResult, commentsResult, payersResult] = await Promise.all([
+    db.execute({
+      sql: `SELECT s.expense_id, s.member_id, s.amount_minor, m.name AS member_name
+        FROM expense_splits s
+        JOIN group_members m ON m.id = s.member_id
+        WHERE s.expense_id IN (
+          SELECT id FROM expenses WHERE group_id = ?
+        )
+        ORDER BY m.name`,
+      args: [groupId],
+    }),
+    db.execute({
+      sql: `SELECT c.*
+        FROM expense_comments c
+        JOIN expenses e ON e.id = c.expense_id
+        WHERE e.group_id = ?
+        ORDER BY c.created_at ASC`,
+      args: [groupId],
+    }),
+    db.execute({
+      sql: `SELECT p.expense_id, p.member_id, p.amount_minor, m.name AS member_name
+        FROM expense_payers p
+        JOIN group_members m ON m.id = p.member_id
+        WHERE p.expense_id IN (
+          SELECT id FROM expenses WHERE group_id = ?
+        )
+        ORDER BY m.name`,
+      args: [groupId],
+    }),
+  ]);
 
   const splitsByExpense = new Map();
   for (const split of splitsResult.rows) {
@@ -518,19 +506,24 @@ async function createExpense(groupId, {
 }) {
   const db = getClient();
 
-  await getGroupById(groupId); // Validates existence
-
-  const amountMinor = toMinorUnits(amount);
   const membersResult = await db.execute({
-    sql: 'SELECT id FROM group_members WHERE group_id = ? ORDER BY id',
+    sql: `SELECT m.id
+      FROM groups g
+      LEFT JOIN group_members m ON m.group_id = g.id
+      WHERE g.id = ?
+      ORDER BY m.id`,
     args: [groupId],
   });
-  const members = membersResult.rows;
+  if (membersResult.rows.length === 0) {
+    throw ApiError.notFound('Group not found');
+  }
+  const members = membersResult.rows.filter((member) => member.id !== null);
 
   if (members.length === 0) {
     throw ApiError.conflict('Add at least one member before creating an expense.');
   }
 
+  const amountMinor = toMinorUnits(amount);
   const memberIds = new Set(members.map((member) => member.id));
   const payerAllocations = normalizePayers(amountMinor, payers, paidByMemberId, memberIds);
   const primaryPayerId = payerAllocations[0].memberId;
@@ -614,16 +607,6 @@ async function createExpense(groupId, {
     }
   });
 
-  await sendSplitExpenseEmails(
-    groupId,
-    expenseId,
-    title,
-    category || 'Other',
-    amountMinor,
-    splitType || 'EQUAL',
-    paymentMethod || 'OTHER',
-  );
-
   return getExpenseById(groupId, expenseId);
 }
 
@@ -641,26 +624,26 @@ async function getExpenseById(groupId, expenseId) {
     throw ApiError.notFound('Expense not found');
   }
 
-  const splitResult = await db.execute({
-    sql: `SELECT s.expense_id, s.member_id, s.amount_minor, m.name AS member_name
-      FROM expense_splits s JOIN group_members m ON m.id = s.member_id
-      WHERE s.expense_id = ? ORDER BY m.name`,
-    args: [expenseId],
-  });
-
-  const commentsResult = await db.execute({
-    sql: 'SELECT * FROM expense_comments WHERE expense_id = ? ORDER BY created_at ASC',
-    args: [expenseId],
-  });
-
-  const payerResult = await db.execute({
-    sql: `SELECT p.expense_id, p.member_id, p.amount_minor, m.name AS member_name
-      FROM expense_payers p
-      JOIN group_members m ON m.id = p.member_id
-      WHERE p.expense_id = ?
-      ORDER BY m.name`,
-    args: [expenseId],
-  });
+  const [splitResult, commentsResult, payerResult] = await Promise.all([
+    db.execute({
+      sql: `SELECT s.expense_id, s.member_id, s.amount_minor, m.name AS member_name
+        FROM expense_splits s JOIN group_members m ON m.id = s.member_id
+        WHERE s.expense_id = ? ORDER BY m.name`,
+      args: [expenseId],
+    }),
+    db.execute({
+      sql: 'SELECT * FROM expense_comments WHERE expense_id = ? ORDER BY created_at ASC',
+      args: [expenseId],
+    }),
+    db.execute({
+      sql: `SELECT p.expense_id, p.member_id, p.amount_minor, m.name AS member_name
+        FROM expense_payers p
+        JOIN group_members m ON m.id = p.member_id
+        WHERE p.expense_id = ?
+        ORDER BY m.name`,
+      args: [expenseId],
+    }),
+  ]);
 
   return formatExpense(
     expenseResult.rows[0],
@@ -672,8 +655,6 @@ async function getExpenseById(groupId, expenseId) {
 
 async function updateExpense(groupId, expenseId, updates) {
   const db = getClient();
-
-  await getGroupById(groupId); // Validates existence
 
   const existing = await db.execute({
     sql: 'SELECT * FROM expenses WHERE id = ? AND group_id = ?',
@@ -711,16 +692,21 @@ async function updateExpense(groupId, expenseId, updates) {
       }
     }
 
+    const settledAt = updates.isSettled ? timestamp() : null;
     await db.execute({
       sql: 'UPDATE expenses SET is_settled = ?, settled_at = ? WHERE id = ? AND group_id = ?',
       args: [
         updates.isSettled ? 1 : 0,
-        updates.isSettled ? timestamp() : null,
+        settledAt,
         expenseId,
         groupId,
       ],
     });
-    return getExpenseById(groupId, expenseId);
+    return {
+      id: expenseId,
+      isSettled: updates.isSettled,
+      settledAt: settledAt ? new Date(settledAt).getTime() : null,
+    };
   }
 
   if (oldExpense.is_settled) {
@@ -895,20 +881,7 @@ async function updateExpense(groupId, expenseId, updates) {
     }
   });
 
-  const updatedExpense = await getExpenseById(groupId, expenseId);
-  const updatedAmountMinor = toMinorUnits(updatedExpense.totalAmount);
-
-  await sendSplitExpenseEmails(
-    groupId,
-    expenseId,
-    updatedExpense.title,
-    updatedExpense.category,
-    updatedAmountMinor,
-    updatedExpense.splitType,
-    updatedExpense.paymentMethod,
-  );
-
-  return updatedExpense;
+  return getExpenseById(groupId, expenseId);
 }
 
 async function deleteExpense(groupId, expenseId) {
@@ -1332,50 +1305,6 @@ async function createSettlement(groupId, { fromMemberId, toMemberId, amount, pay
   });
 
   return formatSettlement(result.rows[0]);
-}
-
-async function sendSplitExpenseEmails(groupId, expenseId, title, category, amountMinor, splitType, paymentMethod) {
-  try {
-    const db = getClient();
-    const expense = await getExpenseById(groupId, expenseId);
-    const groupResult = await db.execute({
-      sql: 'SELECT name, currency FROM groups WHERE id = ?',
-      args: [groupId],
-    });
-    if (groupResult.rows.length === 0) return;
-    const group = groupResult.rows[0];
-
-    const memberEmailsResult = await db.execute({
-      sql: 'SELECT email FROM group_members WHERE group_id = ? AND email IS NOT NULL',
-      args: [groupId],
-    });
-    const memberEmails = memberEmailsResult.rows
-      .map((row) => row.email)
-      .filter(Boolean);
-
-    if (memberEmails.length === 0) return;
-
-    const totalAmount = toAmount(amountMinor);
-    const payerNames = expense.payers?.map((p) => p.memberName).join(' + ') || '';
-
-    const emailResult = await emailService.sendSplitSummaryEmail({
-      to: memberEmails.join(','),
-      name: 'Group Member',
-      expenseTitle: title,
-      totalAmount,
-      currency: group.currency,
-      payerName: payerNames,
-      splitMethod: splitType,
-      participants: (expense.splits || []).map((s) => ({ name: s.memberName, owed: s.amount })),
-      expenseId,
-      groupId,
-    });
-    if (emailResult.success === false) {
-      console.error('Failed to send split expense emails:', emailResult.error);
-    }
-  } catch (error) {
-    console.error('Failed to send split expense emails:', error.message);
-  }
 }
 
 module.exports = {

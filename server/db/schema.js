@@ -87,7 +87,9 @@ module.exports = [
     created_at TEXT NOT NULL
   )`,
   'CREATE INDEX IF NOT EXISTS idx_group_members_group_id ON group_members(group_id)',
+  'CREATE INDEX IF NOT EXISTS idx_group_members_lower_email ON group_members(lower(email))',
   'CREATE INDEX IF NOT EXISTS idx_expenses_group_date ON expenses(group_id, expense_date DESC)',
+  'CREATE INDEX IF NOT EXISTS idx_expenses_group_updated_at ON expenses(group_id, updated_at DESC)',
   'CREATE INDEX IF NOT EXISTS idx_expense_payers_expense_id ON expense_payers(expense_id)',
   'CREATE INDEX IF NOT EXISTS idx_settlements_group_date ON settlements(group_id, settled_at DESC)',
   'CREATE INDEX IF NOT EXISTS idx_expense_comments_expense_id ON expense_comments(expense_id)',

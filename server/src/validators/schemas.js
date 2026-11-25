@@ -40,7 +40,7 @@ const expenseSchema = z.object({
   amount: z.number().finite().positive().max(100000000),
   category: z.string().trim().min(1).max(80).optional().default('Other'),
   paidByMemberId: z.string().min(1).optional(),
-  payers: z.array(payerSchema).min(1).max(100).optional(),
+  payers: z.array(payerSchema).min(1).max(1).optional(),
   splitType: z.string().trim().min(1).max(40).optional().default('EQUAL'),
   paymentMethod: z.string().trim().min(1).max(40).optional().default('OTHER'),
   date: z.string().refine((value) => {
@@ -75,14 +75,14 @@ const expenseStatusSchema = z.object({
 const expenseUpdateSchema = z.object({
   title: z.string().trim().min(1).max(160).optional(),
   amount: z.number().finite().positive().max(100000000).optional(),
-  category: z.string().trim().min(1).max(80).optional().default('Other'),
+  category: z.string().trim().min(1).max(80).optional(),
   paidByMemberId: z.string().min(1).optional(),
   payers: z.array(z.object({
     memberId: z.string().min(1),
     amount: z.number().finite().positive().max(100000000),
-  })).optional(),
-  splitType: z.string().trim().min(1).max(40).optional().default('EQUAL'),
-  paymentMethod: z.string().trim().min(1).max(40).optional().default('OTHER'),
+  })).max(1).optional(),
+  splitType: z.string().trim().min(1).max(40).optional(),
+  paymentMethod: z.string().trim().min(1).max(40).optional(),
   date: z.string().refine((value) => {
     if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
       const parsed = new Date(`${value}T00:00:00.000Z`);
@@ -95,6 +95,12 @@ const expenseUpdateSchema = z.object({
     memberId: z.string().min(1),
     amount: z.number().finite().min(0).max(100000000),
   })).optional(),
+  isSettled: z.boolean().optional(),
+  settledAt: z.union([
+    z.number().int().positive(),
+    z.string().datetime(),
+    z.null(),
+  ]).optional(),
 }).refine(
   (data) => {
     // At least one field must be provided for an update

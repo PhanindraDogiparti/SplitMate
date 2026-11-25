@@ -203,12 +203,6 @@ export default function AppLayout({
     setLastReadAt(Number(localStorage.getItem(notificationReadKey)) || 0);
   }, [notificationReadKey]);
 
-  useEffect(() => {
-    void fetchNotifications();
-    const interval = window.setInterval(() => void fetchNotifications(), 60_000);
-    return () => window.clearInterval(interval);
-  }, [fetchNotifications, location.pathname]);
-
   function markNotificationsRead() {
     const readAt = Date.now();
     localStorage.setItem(notificationReadKey, String(readAt));
@@ -245,7 +239,7 @@ export default function AppLayout({
         =================================================================== */}
         <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col justify-between border-r border-slate-200/80 bg-white p-5 lg:flex dark:border-zinc-800 dark:bg-zinc-900">
           <div className="overflow-y-auto">
-            <Link to="/" className="flex items-center gap-2.5 px-2">
+            <Link to="/group" className="flex items-center gap-2.5 px-2">
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm shadow-indigo-600/25">
                 <Wallet className="h-5 w-5" />
               </div>
